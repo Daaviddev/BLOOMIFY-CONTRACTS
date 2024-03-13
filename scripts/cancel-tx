@@ -1,0 +1,17 @@
+import { ethers, network } from "hardhat";
+
+const main = async () => {
+  const [deployer] = await ethers.getSigners();
+  const nonce = await deployer.getTransactionCount();
+
+  const tx = {
+    nonce: nonce,
+    to: ethers.constants.AddressZero,
+    data: "0x",
+    gasPrice: 1000000000000,
+  }; // costs 21000 gas
+
+  await deployer.sendTransaction(tx);
+};
+
+main();

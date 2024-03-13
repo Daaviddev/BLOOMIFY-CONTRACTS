@@ -1,0 +1,976 @@
+import { expect } from "chai";
+import { Signer } from "ethers";
+import { ethers } from "hardhat";
+import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/dist/src/signer-with-address";
+
+import { deployContract, deployUpgradeableContract } from "../scripts/utils";
+import {
+  Nectar,
+  Whitelist,
+  USDC,
+  BloomNFT,
+  TreasuryUpgradeable,
+  LiquidityManagerMock,
+  BloomsManagerUpgradeable,
+} from "../typechain";
+import Web3 from "web3";
+import { BloomsManagerUpgradeable02 } from "../typechain/BloomsManagerUpgradeable02";
+
+// let web3 = new Web3(
+//   "https://ropsten.infura.io/v3/2ba26ed9b899465bb92b41ab6fd063af"
+// ); // change me!
+
+// function getPair(tokenA: string, tokenB: string) {
+//   let _hexadem =
+//     "0x00fb7f630766e6a796048ea87d01acd3068e8ff67d078148a3fa3f4a84f69bd5";
+//   let _factory = "0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73";
+//   let [token0, token1] = tokenA < tokenB ? [tokenA, tokenB] : [tokenB, tokenA];
+
+//   let abiEncoded1 = web3.eth.abi.encodeParameters(
+//     ["address", "address"],
+//     [token0, token1]
+//   );
+//   abiEncoded1 = abiEncoded1.split("0".repeat(24)).join("");
+//   let salt = web3.utils.soliditySha3(abiEncoded1);
+//   let abiEncoded2 = web3.eth.abi.encodeParameters(
+//     ["address", "bytes32"],
+//     [_factory, salt]
+//   );
+//   abiEncoded2 = abiEncoded2.split("0".repeat(24)).join("").substring(2);
+//   let pair =
+//     "0x" +
+//     Web3.utils.soliditySha3Raw("0xff" + abiEncoded2, _hexadem).substring(26);
+
+//   return pair;
+// }
+
+describe("BloomsManager", function () {
+  this.timeout(100000);
+  // Accounts
+  let accounts: Signer[];
+  let owner: SignerWithAddress;
+
+  const initialNectarSupply = ethers.utils.parseEther("1000000");
+  const rewardPerDay = 34724;
+  const liquidityProxyAddr = "0x29bfF32ff1ebA2c678f1F045e2bDfC49016b9AF6";
+
+  // Contracts
+  let bloombox: BloomsManagerUpgradeable,
+    nectar: Nectar,
+    whitelist: Whitelist,
+    usdc: USDC,
+    treasury: TreasuryUpgradeable,
+    bloomNFT: BloomNFT,
+    lmMock: LiquidityManagerMock;
+
+  // block.timestamp
+  const getCurrentBlockTime = async () => {
+    const blockNumber = await ethers.provider.getBlockNumber();
+    const blockBefore = await ethers.provider.getBlock(blockNumber);
+
+    return blockBefore.timestamp;
+  };
+
+  beforeEach(async () => {
+    [owner, ...accounts] = await ethers.getSigners();
+
+    // nectar = await deployUpgradeableContract<Nectar>("Nectar", [
+    //   initialNectarSupply,
+    // ]);
+
+    // lmMock = await deployUpgradeableContract<LiquidityManagerMock>(
+    //   "LiquidityManagerMock",
+    //   [
+    //     "0x0b51d54bdd291AE98f45cdFAC58f018f400bEC12",
+    //     "0xd1a868e7248707CF299F39EF26B8b9eeD52C49Dc",
+    //   ]
+    // );
+
+    // usdc = await deployUpgradeableContract<USDC>("USDC");
+
+    // bloomNFT = await deployUpgradeableContract<BloomNFT>("BloomNFT", [
+    //   "https://",
+    // ]);
+
+    // treasury = await deployUpgradeableContract<TreasuryUpgradeable>(
+    //   "TreasuryUpgradeable",
+    //   ["0x968c14782d0e7F3686B658CE7ccf28e3707854eA", "0xDDB43ebc3F34947C104A747a6150F4BbAA78a5eB"]
+    // );
+
+    // whitelist = await deployUpgradeableContract<Whitelist>(
+    //   "Whitelist",
+    //   undefined,
+    //   "__Whitelist_init"
+    // );
+
+    // bloombox = await deployUpgradeableContract<BloomsManagerUpgradeable>(
+    //   "BloomsManagerUpgradeable",
+    //   [
+    //     liquidityProxyAddr,
+    //     "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+    //     "0x49731a2d3c6cf2b59aa7b8d55b0558688f523f0d",
+    //     "0x5c548b03483db885281e631dB4fD01342a8f6d22",
+    //     "0xDDB43ebc3F34947C104A747a6150F4BbAA78a5eB",
+    //     "0xbdA400E439fFE22C85e8F73DB47b9C206dce9BD2",
+    //     "0x34ED92033E6B734C08131B0554f12c28Ec859667",
+    //     "0x2aFC4f729984994b7548e25a9aea27606538Ca43",
+    //     rewardPerDay,
+    //   ]
+    // );
+  });
+
+  it.only("Should successfully create a node with $NCTR", async () => {
+
+    const abi = [
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: false,
+            internalType: "uint8",
+            name: "version",
+            type: "uint8",
+          },
+        ],
+        name: "Initialized",
+        type: "event",
+      },
+      {
+        anonymous: false,
+        inputs: [
+          {
+            indexed: true,
+            internalType: "address",
+            name: "previousOwner",
+            type: "address",
+          },
+          {
+            indexed: true,
+            internalType: "address",
+            name: "newOwner",
+            type: "address",
+          },
+        ],
+        name: "OwnershipTransferred",
+        type: "event",
+      },
+      {
+        inputs: [
+          {
+            internalType: "uint256",
+            name: "tokenAmount",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "usdcAmount",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "tokenOutMin",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "usdcOutMin",
+            type: "uint256",
+          },
+        ],
+        name: "addLiquidity",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "amountModifier",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "buybackSpentTotal",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "buybacksExecuted",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "distributedUsdcTotal",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "bool",
+            name: "value",
+            type: "bool",
+          },
+        ],
+        name: "enableEqualizer",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "bool",
+            name: "value",
+            type: "bool",
+          },
+        ],
+        name: "enableLiquidityManager",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "equalizerEnabled",
+        outputs: [
+          {
+            internalType: "bool",
+            name: "",
+            type: "bool",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "getAmountModifier",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "getPairReserves",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "usdc",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "token",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "getTokenPrice",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "traderJoeRouter",
+            type: "address",
+          },
+          {
+            internalType: "address",
+            name: "usdcContract",
+            type: "address",
+          },
+          {
+            internalType: "address",
+            name: "lmsProviderAddress",
+            type: "address",
+          },
+        ],
+        name: "init",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "liquidityManagementEnabled",
+        outputs: [
+          {
+            internalType: "bool",
+            name: "",
+            type: "bool",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "lmsFeeOwed",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "lmsProviderAddr",
+        outputs: [
+          {
+            internalType: "address",
+            name: "",
+            type: "address",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "lmsTrxFee",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "owner",
+        outputs: [
+          {
+            internalType: "address",
+            name: "",
+            type: "address",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "priceBalancerLowerThreshold",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "priceBalancerUpperThreshold",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "pricePrecision",
+        outputs: [
+          {
+            internalType: "uint32",
+            name: "",
+            type: "uint32",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "uint256",
+            name: "amount",
+            type: "uint256",
+          },
+          {
+            internalType: "bool",
+            name: "buyback",
+            type: "bool",
+          },
+        ],
+        name: "rebalance",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "uint256",
+            name: "tokenAmount",
+            type: "uint256",
+          },
+        ],
+        name: "relocateTokensToRewardPool",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "uint256",
+            name: "usdcAmount",
+            type: "uint256",
+          },
+        ],
+        name: "relocateUsdcToTreasury",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "renounceOwnership",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "sellOffExecuted",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "sellOffTokenTotal",
+        outputs: [
+          {
+            internalType: "uint256",
+            name: "",
+            type: "uint256",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "uint256",
+            name: "permille",
+            type: "uint256",
+          },
+        ],
+        name: "setAmountModifier",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "rewardAddr",
+            type: "address",
+          },
+        ],
+        name: "setRewardAddr",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "swapPair",
+            type: "address",
+          },
+        ],
+        name: "setSwapPair",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "uint256",
+            name: "upperBound",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "lowerBound",
+            type: "uint256",
+          },
+        ],
+        name: "setThresholds",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "tokenContractAddr",
+            type: "address",
+          },
+        ],
+        name: "setTokenContractAddr",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "treasuryPoolAddr",
+            type: "address",
+          },
+        ],
+        name: "setTreasuryAddr",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "swapPairAddr",
+        outputs: [
+          {
+            internalType: "address",
+            name: "",
+            type: "address",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "from",
+            type: "address",
+          },
+          {
+            internalType: "address",
+            name: "destination",
+            type: "address",
+          },
+          {
+            internalType: "uint256",
+            name: "tokenAmount",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "slippage",
+            type: "uint256",
+          },
+        ],
+        name: "swapTokenForUSDCToWallet",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "to",
+            type: "address",
+          },
+          {
+            internalType: "uint256",
+            name: "amountIn",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "amountOutMin",
+            type: "uint256",
+          },
+        ],
+        name: "swapTokenForUsdc",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "to",
+            type: "address",
+          },
+          {
+            internalType: "uint256",
+            name: "amountIn",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "amountOutMin",
+            type: "uint256",
+          },
+        ],
+        name: "swapUsdcForToken",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "teamPoolAddr",
+        outputs: [
+          {
+            internalType: "address",
+            name: "",
+            type: "address",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "tokenAddr",
+        outputs: [
+          {
+            internalType: "address",
+            name: "",
+            type: "address",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "tokenRewardAddr",
+        outputs: [
+          {
+            internalType: "address",
+            name: "",
+            type: "address",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "transferLmsFee",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [
+          {
+            internalType: "address",
+            name: "newOwner",
+            type: "address",
+          },
+        ],
+        name: "transferOwnership",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "treasuryAddr",
+        outputs: [
+          {
+            internalType: "address",
+            name: "",
+            type: "address",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+      {
+        inputs: [],
+        name: "usdcAddr",
+        outputs: [
+          {
+            internalType: "address",
+            name: "",
+            type: "address",
+          },
+        ],
+        stateMutability: "view",
+        type: "function",
+      },
+    ];
+
+    const lmProxy = await ethers.getContractAt(
+      abi,
+      "0x29bfF32ff1ebA2c678f1F045e2bDfC49016b9AF6"
+    );
+
+    const bloomnft = await ethers.getContractAt(
+      "BloomNFT",
+      "0x34ED92033E6B734C08131B0554f12c28Ec859667"
+    );
+
+    const bloombox = await ethers.getContractAt(
+      "BloomsManagerUpgradeable",
+      "0xe2ACCE7f7c58fd3170E363Da289ccAa2BD53384a"
+    );
+    const whitelist = await ethers.getContractAt(
+      "Whitelist",
+      "0x2aFC4f729984994b7548e25a9aea27606538Ca43"
+    );
+
+    const fakeusdc = await ethers.getContractAt(
+      "IERC20",
+      "0xDDB43ebc3F34947C104A747a6150F4BbAA78a5eB"
+    );
+
+    const nectar = await ethers.getContractAt(
+      "Nectar",
+      "0xbdA400E439fFE22C85e8F73DB47b9C206dce9BD2"
+    );
+    const treasury = await ethers.getContractAt(
+      "TreasuryUpgradeable",
+      "0x5c548b03483db885281e631dB4fD01342a8f6d22"
+    );
+
+    /**
+     * FIRST CALLS NECESSARY
+     */
+
+    // await nectar.setLiquidityManager(
+    //   "0x29bfF32ff1ebA2c678f1F045e2bDfC49016b9AF6",
+    //   {
+    //     gasLimit: 25000000,
+    //   }
+    // );
+
+    // await nectar.setRewardsPool("0x5c548b03483db885281e631dB4fD01342a8f6d22", {
+    //   gasLimit: 25000000,
+    // });
+
+    // await nectar.setTreasuryAddress(
+    //   "0x5c548b03483db885281e631dB4fD01342a8f6d22",
+    //   {
+    //     gasLimit: 25000000,
+    //   }
+    // );
+
+    /** SECOND BATCH OF NECESSARY CALLS
+     * @notice BEFORE FURTHER CALLS ARE DONE, IT IS NECESSARY TO CREATE A TRADING PAIR THROUGH THE FACTORY CONTRACT
+     * ONCE THE TRADING PAIR IS CREATED, LIQUIDITY NEEDS TO BE ADDED TO IT THROUGH THE ROUTER CONTRACT, HOWEVER FIRST
+     * WE NEED TO APPROVE THE ROUTER CONTRACT TO BE ABLE TO ADD THAT LIQUIDITY. ONCE THE APPROVALS WERE MADE THE LIQUIDITY CAN BE ADDED
+     * @notice CREATE PAIR AND ADD LIQUIDITY FUNCTIONS NEED TO BE CALLED THROUGH ETHERSCAN
+     */
+
+    // await nectar.setPairAddress("0x49731a2d3c6cf2b59aa7b8d55b0558688f523f0d", {
+    //   gasLimit: 25000000,
+    // });
+
+    // await nectar.approve(
+    //   "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+    //   ethers.utils.parseEther("10000"),
+    //   {
+    //     gasLimit: 25000000,
+    //   }
+    // );
+    // await fakeusdc.approve(
+    //   "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+    //   100000 * 10 ** 6,
+    //   {
+    //     gasLimit: 25000000,
+    //   }
+    // );
+
+    /**
+     * THIRD BATCH OF NECESSARY CALLS
+     */
+    // await fakeusdc.transfer(
+    //   "0xe2ACCE7f7c58fd3170E363Da289ccAa2BD53384a",
+    //   1000 * 10 ** 6,
+    //   {
+    //     gasLimit: 25000000,
+    //   }
+    // );
+
+    // await nectar.approve(
+    //   "0xe2ACCE7f7c58fd3170E363Da289ccAa2BD53384a",
+    //   ethers.utils.parseEther("1000"),
+    //   {
+    //     gasLimit: 25000000,
+    //   }
+    // );
+    // await fakeusdc.approve(
+    //   "0xe2ACCE7f7c58fd3170E363Da289ccAa2BD53384a",
+    //   100000 * 10 ** 6,
+    //   {
+    //     gasLimit: 25000000,
+    //   }
+    // );
+
+    // await bloomnft.setBloomNodes("0xe2ACCE7f7c58fd3170E363Da289ccAa2BD53384a", {
+    //   gasLimit: 25000000,
+    // });
+    // await nectar.setBloomNodes("0xe2ACCE7f7c58fd3170E363Da289ccAa2BD53384a", {
+    //   gasLimit: 25000000,
+    // });
+
+    // await nectar.transfer(
+    //   "0xe2ACCE7f7c58fd3170E363Da289ccAa2BD53384a",
+    //   ethers.utils.parseEther("1000"),
+    //   {
+    //     gasLimit: 25000000,
+    //   }
+    // );
+
+    // await bloombox.setDevWallet("0x6050d18F70883fA2a63dE0D91f1A5aA54635B096", {
+    //   gasLimit: 25000000,
+    // });
+
+    // await bloombox.setRewardsPool("0x5c548b03483db885281e631dB4fD01342a8f6d22", {
+    //   gasLimit: 25000000,
+    // });
+
+    /**
+     * OPTIONAL SETTER
+     */
+
+    // await bloombox.setNodeMinPriceNctr(nodeMinPrice, {
+    //   gasLimit: 25000000,
+    // });
+
+    /** LM PROXY CALLS
+     * SET PAIR ADDRESS SHOULD BE CALLED ONCE THE PAIR IS CREATED, SO THIRD BATCH OF NECESSARY CALLS
+     */
+
+    // await lmProxy.setRewardAddr("0x5c548b03483db885281e631dB4fD01342a8f6d22", {
+    //   gasLimit: 25000000
+    // });
+    // await lmProxy.setTreasuryAddr("0x5c548b03483db885281e631dB4fD01342a8f6d22", {
+    //   gasLimit: 25000000
+    // });
+    // await lmProxy.setTokenContractAddr(
+    //   "0xbdA400E439fFE22C85e8F73DB47b9C206dce9BD2",
+    //   {
+    //     // => NECTAR ADDRESS
+    //     gasLimit: 25000000,
+    //   }
+    // );
+
+    // await lmProxy.setSwapPair("0x49731a2d3c6cf2b59aa7b8d55b0558688f523f0d", {
+    //   // => PAIR ADDRESS
+    //   gasLimit: 25000000,
+    // });
+
+    /**
+     * OPTIONAL CALL TO WHITELIST IF USER WANTS TO MINT MORE THAN ONE BLOOM NODE OR CREATE THEM WITH NECTAR
+     */
+    // await whitelist.addToWhitelist(["0x6050d18F70883fA2a63dE0D91f1A5aA54635B096"], {
+    //     gasLimit: 25000000
+    //   });
+
+    //  await whitelist.removeFromWhitelist(["0x6050d18F70883fA2a63dE0D91f1A5aA54635B096"], {
+    //     gasLimit: 25000000
+    //   });
+
+    /**
+     * AFTER ALL THE NECESSARY CALLS ARE DONE, CALL THIS FUNCTION
+     */
+    // await bloombox.createBloomWithNectar("Prime", ethers.utils.parseEther("100"), {
+    //   gasLimit: 25000000,
+    // });
+
+    // await bloombox.createBloomWithUsdc("Prime", 100 * 10**6, {
+    //   gasLimit: 25000000,
+    // });
+
+    // await bloombox.addValue(1, ethers.utils.parseEther("100"), {
+    //   gasLimit: 25000000,
+    // });
+
+    // await bloombox.setRewardsPool("0x5c548b03483db885281e631dB4fD01342a8f6d22", {
+    //   gasLimit: 25000000,
+    // });
+
+    // await bloombox.renameBloom(1, "EtherPrime", {
+    //   gasLimit: 25000000,
+    // });
+  });
+});
